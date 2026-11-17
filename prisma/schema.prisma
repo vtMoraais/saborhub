@@ -1,0 +1,56 @@
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id          Int          @id @default(autoincrement())
+    name        String       @db.VarChar(150)
+    email       String       @unique @db.VarChar(150)
+    password    String       @db.VarChar(255)
+    avatarUrl   String?      @db.VarChar(255)
+    createdAt   DateTime     @default(now())
+
+    restaurants Restaurant[]
+    activities  Activity[]
+}
+
+model Restaurant {
+    id          Int          @id @default(autoincrement())
+    name        String       @db.VarChar(150)
+    category    String?      @db.VarChar(100)
+    rating      Decimal?     @default(5.0) @db.Decimal(2, 1)
+    createdAt   DateTime     @default(now())
+
+    ownerId     Int
+    owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+    dishes      Dish[]
+}
+
+model Dish {
+    id           Int        @id @default(autoincrement())
+    name         String     @db.VarChar(120)
+    description  String?    @db.Text
+    category     String     @db.VarChar(50)
+    price        Decimal    @db.Decimal(10, 2)
+    imageUrl     String?
+    available    Boolean    @default(true)
+    createdAt    DateTime   @default(now())
+
+    restaurantId Int
+    restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+model Activity {
+    id        Int      @id @default(autoincrement())
+    action    String   @db.VarChar(100)
+    details   String?  @db.Text
+    createdAt DateTime @default(now())
+
+    userId    Int?
+    user      User?    @relation(fields: [userId], references: [id])
+}
