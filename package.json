@@ -6,7 +6,11 @@
     "scripts": {
         "start": "node server.js",
         "dev": "node --watch server.js",
-        "test": "node --test teste.js"
+        "test": "node --test teste.js",
+        "postinstall": "prisma generate",
+        "db:migrate": "prisma migrate deploy",
+        "db:migrate:dev": "prisma migrate dev",
+        "db:studio": "prisma studio"
     },
     "Author": "Vitor Morais Silva",
     "license": "MIT",

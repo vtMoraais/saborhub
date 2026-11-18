@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { getJwtSecret } = require('../../config/env');
 
 function verifyAuthentication(req, res, next) {
     const authorizationHeader = req.headers.authorization;
@@ -10,13 +11,18 @@ function verifyAuthentication(req, res, next) {
     }
 
     const [, token] = authorizationHeader.split(' ');
-    const secretKey = process.env.JWT_SECRET || 'fallback_secret_key';
+    const secretKey = getJwtSecret();
 
     try {
         const decodedToken = jwt.verify(token, secretKey);
+        const userId = Number(decodedToken.sub);
+
+        if (!Number.isInteger(userId) || userId <= 0) {
+            throw new Error('Token sem identificador de usuário válido.');
+        }
 
         req.user = {
-            id: decodedToken.sub || decodedToken.id,
+            id: userId,
             email: decodedToken.email
         };
 

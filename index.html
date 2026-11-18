@@ -420,7 +420,9 @@
     </main>
 
     <script>
-        const ENDPOINT_RESTAURANTS = 'http://localhost:3000/restaurants';
+        // Quando servida pela própria API usa a mesma origem; aberta como arquivo local, usa a porta padrão
+        const API_BASE = location.protocol.startsWith('http') ? location.origin : 'http://localhost:3000';
+        const ENDPOINT_RESTAURANTS = `${API_BASE}/restaurants`;
         const STORAGE_FAVS_KEY = 'saborhub_saved_ids';
         const STORAGE_TOKEN_KEY = 'saborhub_jwt';
 
@@ -439,6 +441,16 @@
             'Saudável': '🥗',
             'Italiana': '🍝'
         };
+
+        // Evita injeção de HTML (XSS) ao exibir dados vindos da API
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         function refreshCounter() {
             document.getElementById('saved-counter').textContent = savedIds.length;
@@ -462,11 +474,16 @@
 
             try {
                 const res = await fetch(ENDPOINT_RESTAURANTS);
-                restaurantDataset = await res.json();
+                const data = await res.json();
+                if (!res.ok || !Array.isArray(data)) {
+                    grid.innerHTML = `<div class="status-msg">⚠️ A API respondeu com erro: ${escapeHtml(data.error || res.status)}</div>`;
+                    return;
+                }
+                restaurantDataset = data;
                 refreshCounter();
                 renderCatalog();
             } catch (err) {
-                grid.innerHTML = '<div class="status-msg">⚠️ API indisponível em localhost:3000. Inicie com <b>npm start</b>.</div>';
+                grid.innerHTML = `<div class="status-msg">⚠️ API indisponível em ${escapeHtml(API_BASE)}. Inicie com <b>npm start</b>.</div>`;
             }
         }
 
@@ -497,6 +514,8 @@
             grid.innerHTML = list.map(r => {
                 const isSaved = savedIds.includes(Number(r.id));
                 const icon = iconsByCategory[r.category] || '🍽️';
+                const safeName = escapeHtml(r.name);
+                const safeCategory = escapeHtml(r.category || 'Geral');
                 const dishCount = Array.isArray(r.dishes) ? r.dishes.length : 0;
 
                 return `
@@ -508,8 +527,8 @@
                             </button>
                         </div>
                         <div>
-                            <div class="place-title">${r.name}</div>
-                            <div class="place-category">${r.category || 'Geral'} • ${dishCount} pratos no cardápio</div>
+                            <div class="place-title">${safeName}</div>
+                            <div class="place-category">${safeCategory} • ${dishCount} pratos no cardápio</div>
                         </div>
                         <div class="card-footer">
                             <span class="score-badge">★ ${Number(r.rating).toFixed(1)}</span>
@@ -567,14 +586,14 @@
             };
 
             try {
-                await fetch('http://localhost:3000/auth/register', {
+                await fetch(`${API_BASE}/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(demoCredentials)
                 });
             } catch (_) {}
 
-            const loginResp = await fetch('http://localhost:3000/auth/login', {
+            const loginResp = await fetch(`${API_BASE}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -606,17 +625,30 @@
             btn.textContent = 'Processando...';
 
             try {
-                const jwt = await obtainAuthToken();
-                const response = await fetch(ENDPOINT_RESTAURANTS, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${jwt}`
-                    },
-                    body: JSON.stringify(payload)
-                });
+                const sendRequest = async () => {
+                    const jwt = await obtainAuthToken();
+                    return fetch(ENDPOINT_RESTAURANTS, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${jwt}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                };
 
-                if (!response.ok) throw new Error();
+                let response = await sendRequest();
+
+                // Token salvo expirado (validade de 24h): descarta e autentica novamente
+                if (response.status === 401) {
+                    localStorage.removeItem(STORAGE_TOKEN_KEY);
+                    response = await sendRequest();
+                }
+
+                if (!response.ok) {
+                    const body = await response.json().catch(() => ({}));
+                    throw new Error(body.error || 'Erro ao registrar restaurante na API.');
+                }
 
                 const created = await response.json();
                 restaurantDataset.unshift(created);
@@ -624,7 +656,7 @@
                 feedback.textContent = `Restaurante "${created.name}" registrado com sucesso!`;
                 feedback.className = 'alert-box ok';
             } catch (err) {
-                feedback.textContent = 'Erro ao registrar restaurante na API.';
+                feedback.textContent = err.message || 'Erro ao registrar restaurante na API.';
                 feedback.className = 'alert-box fail';
             } finally {
                 btn.disabled = false;

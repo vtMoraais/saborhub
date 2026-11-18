@@ -2,8 +2,18 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const prisma = require('../../database/prisma');
 const imageService = require('../shared/image.service');
+const activityService = require('../shared/activity.service');
+const HttpError = require('../shared/http-error');
+const { getJwtSecret } = require('../../config/env');
 
 const SALT_ROUNDS = 10;
+
+const PUBLIC_USER_FIELDS = {
+    id: true,
+    name: true,
+    email: true,
+    avatarUrl: true
+};
 
 async function registerUser({ name, email, password }) {
     const encryptedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -14,12 +24,13 @@ async function registerUser({ name, email, password }) {
             email: email.toLowerCase().trim(),
             password: encryptedPassword
         },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true
-        }
+        select: PUBLIC_USER_FIELDS
+    });
+
+    await activityService.record({
+        userId: createdUser.id,
+        action: 'USER_REGISTERED',
+        details: `Usuário ${createdUser.email} cadastrado.`
     });
 
     return createdUser;
@@ -39,15 +50,11 @@ async function authenticateUser({ email, password }) {
         return null;
     }
 
-    const secretKey = process.env.JWT_SECRET || 'fallback_secret_key';
+    // Pelo padrão JWT (RFC 7519) o "sub" deve ser uma string
     const accessToken = jwt.sign(
-        {
-            sub: existingUser.id,
-            id: existingUser.id,
-            email: existingUser.email
-        },
-        secretKey,
-        { expiresIn: '24h' }
+        { email: existingUser.email },
+        getJwtSecret(),
+        { subject: String(existingUser.id), expiresIn: '24h' }
     );
 
     return {
@@ -62,17 +69,23 @@ async function authenticateUser({ email, password }) {
 }
 
 async function updateProfileImage(userId, imageFile) {
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!existingUser) {
+        throw new HttpError(404, 'O usuário deste token não foi encontrado.');
+    }
+
     const savedImageUrl = await imageService.processAndSaveImage(imageFile, 'avatars');
 
     const updatedRecord = await prisma.user.update({
-        where: { id: Number(userId) },
+        where: { id: userId },
         data: { avatarUrl: savedImageUrl },
-        select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true
-        }
+        select: PUBLIC_USER_FIELDS
+    });
+
+    await activityService.record({
+        userId,
+        action: 'AVATAR_UPDATED',
+        details: savedImageUrl
     });
 
     return updatedRecord;

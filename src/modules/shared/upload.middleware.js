@@ -1,4 +1,5 @@
 const multer = require('multer');
+const HttpError = require('./http-error');
 
 const VALID_MIME_TYPES = new Set([
     'image/jpeg',
@@ -15,7 +16,7 @@ function validateImageType(req, file, callback) {
         return callback(null, true);
     }
     return callback(
-        new Error('Tipo de arquivo não suportado. Utilize apenas JPEG, PNG ou WebP.'),
+        new HttpError(400, 'Tipo de arquivo não suportado. Utilize apenas JPEG, PNG ou WebP.'),
         false
     );
 }
@@ -24,7 +25,8 @@ const uploadMiddleware = multer({
     storage: memoryStorage,
     fileFilter: validateImageType,
     limits: {
-        fileSize: MAX_FILE_SIZE_BYTES
+        fileSize: MAX_FILE_SIZE_BYTES,
+        files: 1
     }
 });
 

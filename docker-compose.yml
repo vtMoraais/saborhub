@@ -1,0 +1,18 @@
+# Banco PostgreSQL para desenvolvimento local.
+# As credenciais batem com a DATABASE_URL do .env.example.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: saborhub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: saborhub_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - saborhub-data:/var/lib/postgresql/data
+
+volumes:
+  saborhub-data:

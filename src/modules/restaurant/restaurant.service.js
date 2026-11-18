@@ -1,4 +1,6 @@
 const prisma = require('../../database/prisma');
+const activityService = require('../shared/activity.service');
+const HttpError = require('../shared/http-error');
 
 async function fetchAllRestaurants() {
     return prisma.restaurant.findMany({
@@ -12,26 +14,55 @@ async function fetchAllRestaurants() {
 }
 
 async function insertRestaurant({ name, category, rating, ownerId }) {
-    return prisma.restaurant.create({
+    const createdRestaurant = await prisma.restaurant.create({
         data: {
             name: name.trim(),
             category: category.trim(),
-            rating: rating !== undefined ? Number(rating) : 5.0,
-            ownerId: Number(ownerId)
+            rating,
+            ownerId
         }
     });
+
+    await activityService.record({
+        userId: ownerId,
+        action: 'RESTAURANT_CREATED',
+        details: `Restaurante #${createdRestaurant.id} "${createdRestaurant.name}" criado.`
+    });
+
+    return createdRestaurant;
 }
 
-async function insertDishForRestaurant({ name, category, price, description, restaurantId }) {
-    return prisma.dish.create({
+async function insertDishForRestaurant({ name, category, price, description, restaurantId, requesterId }) {
+    const restaurant = await prisma.restaurant.findUnique({
+        where: { id: restaurantId }
+    });
+
+    if (!restaurant) {
+        throw new HttpError(404, 'O restaurante informado não foi localizado.');
+    }
+
+    // Apenas o dono do restaurante pode alterar o cardápio
+    if (restaurant.ownerId !== requesterId) {
+        throw new HttpError(403, 'Apenas o dono do restaurante pode cadastrar pratos nele.');
+    }
+
+    const createdDish = await prisma.dish.create({
         data: {
             name: name.trim(),
             category: category.trim(),
-            price: Number(price),
+            price,
             description: description ? description.trim() : '',
-            restaurantId: Number(restaurantId)
+            restaurantId
         }
     });
+
+    await activityService.record({
+        userId: requesterId,
+        action: 'DISH_CREATED',
+        details: `Prato #${createdDish.id} "${createdDish.name}" adicionado ao restaurante #${restaurantId}.`
+    });
+
+    return createdDish;
 }
 
 module.exports = {

@@ -8,12 +8,8 @@ const authRouter = Router();
 authRouter.post('/register', authController.register);
 authRouter.post('/login', authController.login);
 
-authRouter.get('/me', requireAuth, (req, res) => {
-    return res.status(200).json({
-        authenticated: true,
-        user: req.user
-    });
-});
+authRouter.get('/me', requireAuth, authController.me);
+authRouter.get('/me/activities', requireAuth, authController.listActivities);
 
 authRouter.post(
     '/me/image',
